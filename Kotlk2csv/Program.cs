@@ -42,7 +42,9 @@ namespace Kotlk2csv
                         for (int i = 0; i < TLK.StringCount; i++)
                         {
                             Table.Flags = reader.ReadInt32();
-                            Table.SoundResRef = reader.ReadBytes(16);
+                            Table.SoundResRef = ReaduntilNull.ReadNullTerminatedString(reader);
+                            Encoding en = Encoding.GetEncoding("UTF-8");
+                            stream.Seek(15 - en.GetByteCount(Table.SoundResRef), SeekOrigin.Current);
                             Table.VolumeVariance = reader.ReadInt32();
                             Table.PitchVariance = reader.ReadInt32();
                             Table.OffsetToString = reader.ReadInt32();
@@ -53,13 +55,28 @@ namespace Kotlk2csv
                                 currentpos = stream.Position;
                                 stream.Seek(TLK.StringEntriesOffset + Table.OffsetToString, 0);
                                 //stringをUTF8で取得
-                                Tablestring.Add(
-                                    new csv()
-                                    {
-                                        id = i.ToString(),
-                                        entry = Encoding.UTF8.GetString(reader.ReadBytes(Table.StringSize))
-                                    }
-                                );
+                                if (Table.SoundResRef != null)
+                                {
+                                    Tablestring.Add(
+                                        new csv()
+                                        {
+                                            id = i.ToString(),
+                                            soundref = Table.SoundResRef,
+                                            entry = Encoding.UTF8.GetString(reader.ReadBytes(Table.StringSize))
+                                        }
+                                    );
+                                }
+                                else
+                                {
+                                    Tablestring.Add(
+                                        new csv()
+                                        {
+                                            id = i.ToString(),
+                                            soundref = "",
+                                            entry = Encoding.UTF8.GetString(reader.ReadBytes(Table.StringSize))
+                                        }
+                                    );
+                                }
                                 //Streamの位置を復元
                                 stream.Position = currentpos;
                             }
@@ -67,7 +84,7 @@ namespace Kotlk2csv
                     }
                     try
                     {
-                        if (args[1] != null)
+                        if (args[1] != null) //第二引数を出力ファイル名に
                         {
                             using (TextWriter tw = File.CreateText(args[1]))
                             {
@@ -93,16 +110,59 @@ namespace Kotlk2csv
                     {
                         DataTable Table = new DataTable();
                         cr.Configuration.RegisterClassMap<CsvMapper>();
-                        var records = cr.GetRecords<csv>();
+                        var records = cr.GetRecords<csv>().ToList();
+                        Table.OffsetToString = 0;
+                        List<byte[]> TLK = new List<byte[]>();
+                        List<byte[]> TLKString = new List<byte[]>();
+                        //ヘッダ出力
+                        List<byte[]> TLKHeader = new List<byte[]>();
+                        TLKHeader.Add(Encoding.UTF8.GetBytes("TLK V3.0"));
+                        TLKHeader.Add(BitConverter.GetBytes(0));
+                        int StringCount = records.Count();
+                        //StringCount
+                        TLKHeader.Add(BitConverter.GetBytes(StringCount));
+                        //StringEntriesOffset
+                        TLKHeader.Add(BitConverter.GetBytes(StringCount * 40 + 20));                      
+                        //DataTable出力
                         foreach (var record in records)
                         {
                             Table.Flags = 7;
-                            Encoding enc = Encoding.GetEncoding("UTF8");
+                            Encoding enc = Encoding.GetEncoding("UTF-8");
                             Table.StringSize = enc.GetByteCount(record.entry);
-
+                            TLK.Add(BitConverter.GetBytes(Table.Flags));
+                            
+                            for (int i=0; i<6; i++)
+                            {
+                                TLK.Add(BitConverter.GetBytes(0));
+                            }
+                            TLK.Add(BitConverter.GetBytes(Table.OffsetToString));
+                            TLK.Add(BitConverter.GetBytes(Table.StringSize));
+                            TLK.Add(BitConverter.GetBytes(0));
+                            Table.OffsetToString += Table.StringSize;
+                            TLKString.Add(Encoding.UTF8.GetBytes(record.entry));
                         }
-                    }
-                    
+                        TLKHeader.AddRange(TLK);
+                        TLKHeader.AddRange(TLKString);                        
+                        try
+                        {
+                            if (args[1] != null) //第二引数を出力ファイル名に
+                            {
+                                FileStream fs = new FileStream(args[1], FileMode.OpenOrCreate, FileAccess.Write);
+                                var flattenedList = TLKHeader.SelectMany(bytes => bytes);
+                                var byteArray = flattenedList.ToArray();
+                                fs.Write(byteArray, 0, byteArray.Length);
+                                fs.Close();
+                            }
+                        }
+                        catch (IndexOutOfRangeException)
+                        {
+                            FileStream fs = new FileStream("exported.tlk", FileMode.OpenOrCreate, FileAccess.Write);
+                            var flattenedList = TLKHeader.SelectMany(bytes => bytes);
+                            var byteArray = flattenedList.ToArray();
+                            fs.Write(byteArray, 0, byteArray.Length);
+                            fs.Close();
+                        }
+                    }                   
                 }
                 stream.Close();
                 stream.Dispose();
@@ -135,6 +195,17 @@ namespace Kotlk2csv
             }
         }
     }
+    public static class ReaduntilNull
+    {
+        public static string ReadNullTerminatedString(this BinaryReader stream)
+        {
+            string str = "";
+            char ch;
+            while ((int)(ch = stream.ReadChar()) != 0)
+                str = str + ch;
+            return str;
+        }
+    }
 
     public class Header
     {
@@ -147,7 +218,7 @@ namespace Kotlk2csv
     public class DataTable
     {
         public int Flags;
-        public byte[] SoundResRef; //16byte
+        public string SoundResRef; //16byte
         public int VolumeVariance;
         public int PitchVariance;
         public int OffsetToString;
@@ -157,6 +228,7 @@ namespace Kotlk2csv
     public class csv
     {
         public string id { get; set; }
+        public string soundref { get; set; }
         public string entry { get; set; }
     }
     class CsvMapper : CsvHelper.Configuration.CsvClassMap<csv>
@@ -164,7 +236,8 @@ namespace Kotlk2csv
         public CsvMapper()
         {
             Map(x => x.id).Index(0);
-            Map(x => x.entry).Index(1);
+            Map(x => x.soundref).Index(1);
+            Map(x => x.entry).Index(2);
         }
     }
 }
