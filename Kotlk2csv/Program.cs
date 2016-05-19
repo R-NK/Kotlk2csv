@@ -42,7 +42,8 @@ namespace Kotlk2csv
                         for (int i = 0; i < TLK.StringCount; i++)
                         {
                             Table.Flags = reader.ReadInt32();
-                            Table.SoundResRef = ReaduntilNull.ReadNullTerminatedString(reader);
+                            //SoundResRef読み込み
+                            Table.SoundResRef = ReaduntilNull.ReadNullTerminatedString(reader); //0に当たるまで一文字ずつ取得
                             Encoding en = Encoding.GetEncoding("UTF-8");
                             stream.Seek(15 - en.GetByteCount(Table.SoundResRef), SeekOrigin.Current);
                             Table.VolumeVariance = reader.ReadInt32();
@@ -130,10 +131,24 @@ namespace Kotlk2csv
                             Encoding enc = Encoding.GetEncoding("UTF-8");
                             Table.StringSize = enc.GetByteCount(record.entry);
                             TLK.Add(BitConverter.GetBytes(Table.Flags));
-                            
-                            for (int i=0; i<6; i++)
+                            if (record.soundref != "")
                             {
-                                TLK.Add(BitConverter.GetBytes(0));
+                                TLK.Add(Encoding.UTF8.GetBytes(record.soundref));
+                                for (int i = 1; i + enc.GetByteCount(record.soundref) <= 16; i++)
+                                {
+                                    byte by = 0;
+                                    TLK.Add(BitConverter.GetBytes(by));
+                                }
+                                for (int i = 0; i < 2; i++)
+                                {
+                                    TLK.Add(BitConverter.GetBytes(0));
+                                }
+                            }else
+                            {
+                                for (int i = 0; i < 6; i++)
+                                {
+                                    TLK.Add(BitConverter.GetBytes(0));
+                                }
                             }
                             TLK.Add(BitConverter.GetBytes(Table.OffsetToString));
                             TLK.Add(BitConverter.GetBytes(Table.StringSize));
