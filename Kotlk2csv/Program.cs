@@ -61,7 +61,7 @@ namespace Kotlk2csv
                                     Tablestring.Add(
                                         new csv()
                                         {
-                                            id = i.ToString(),
+                                            id = i,
                                             soundref = Table.SoundResRef,
                                             entry = Encoding.UTF8.GetString(reader.ReadBytes(Table.StringSize))
                                         }
@@ -72,7 +72,7 @@ namespace Kotlk2csv
                                     Tablestring.Add(
                                         new csv()
                                         {
-                                            id = i.ToString(),
+                                            id = i,
                                             soundref = "",
                                             entry = Encoding.UTF8.GetString(reader.ReadBytes(Table.StringSize))
                                         }
@@ -118,15 +118,24 @@ namespace Kotlk2csv
                         //ヘッダ出力
                         List<byte[]> TLKHeader = new List<byte[]>();
                         TLKHeader.Add(Encoding.UTF8.GetBytes("TLK V3.0"));
-                        TLKHeader.Add(BitConverter.GetBytes(0));
-                        int StringCount = records.Count();
-                        //StringCount
-                        TLKHeader.Add(BitConverter.GetBytes(StringCount));
-                        //StringEntriesOffset
-                        TLKHeader.Add(BitConverter.GetBytes(StringCount * 40 + 20));                      
+                        TLKHeader.Add(BitConverter.GetBytes(0));                        
                         //DataTable出力
+                        int Count = 0;
+                        int StringCount = 0;
                         foreach (var record in records)
                         {
+                            if (Count != record.id)
+                            {
+                                for (int a = 0; a < record.id - Count; a++)
+                                {
+                                    TLK.Add(BitConverter.GetBytes(32768));
+                                    for (int i = 0; i < 9; i++)
+                                    {
+                                        TLK.Add(BitConverter.GetBytes(0));
+                                    }
+                                }
+                                Count = record.id;
+                            }
                             Table.Flags = 7;
                             Encoding enc = Encoding.GetEncoding("UTF-8");
                             Table.StringSize = enc.GetByteCount(record.entry);
@@ -155,9 +164,16 @@ namespace Kotlk2csv
                             TLK.Add(BitConverter.GetBytes(0));
                             Table.OffsetToString += Table.StringSize;
                             TLKString.Add(Encoding.UTF8.GetBytes(record.entry));
+                            Count++;
+                            StringCount = record.id;
                         }
+                        int StringBytesCount = (StringCount + 1) * 40;
+                        //StringCount
+                        TLKHeader.Add(BitConverter.GetBytes(StringCount + 1));
+                        //StringEntriesOffset
+                        TLKHeader.Add(BitConverter.GetBytes(StringBytesCount + 20));
                         TLKHeader.AddRange(TLK);
-                        TLKHeader.AddRange(TLKString);                        
+                        TLKHeader.AddRange(TLKString);
                         try
                         {
                             if (args[1] != null) //第二引数を出力ファイル名に
@@ -242,7 +258,7 @@ namespace Kotlk2csv
     }
     public class csv
     {
-        public string id { get; set; }
+        public int id { get; set; }
         public string soundref { get; set; }
         public string entry { get; set; }
     }
