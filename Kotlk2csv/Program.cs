@@ -134,10 +134,10 @@ namespace Kotlk2csv
                             if (record.soundref != "")
                             {
                                 TLK.Add(Encoding.UTF8.GetBytes(record.soundref));
+                                //SoundRefResが16バイトになるまで0で埋める
                                 for (int i = 1; i + enc.GetByteCount(record.soundref) <= 16; i++)
-                                {
-                                    byte by = 0;
-                                    TLK.Add(BitConverter.GetBytes(by));
+                                {                                   
+                                    TLK.Add(BitConverter.GetBytes(false));
                                 }
                                 for (int i = 0; i < 2; i++)
                                 {
