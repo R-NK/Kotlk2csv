@@ -58,12 +58,28 @@ namespace Kotlk2csv
                                 //stringをUTF8で取得
                                 if (Table.SoundResRef != null)
                                 {
+                                    var decoderFallback = new DecoderExceptionFallback();
+                                    Encoding encodeex = Encoding.GetEncoding("utf-8", EncoderFallback.ReplacementFallback, decoderFallback);
+                                    string str = "";
+                                    try
+                                    {
+                                        str = encodeex.GetString(reader.ReadBytes(Table.StringSize));
+                                    }
+                                    catch (DecoderFallbackException ex) //UTF-8でデコードできない文字はLatin1でデコード
+                                    {
+                                        Encoding latin1 = Encoding.GetEncoding("iso-8859-1");
+                                        string latin1str = latin1.GetString(ex.BytesUnknown);
+                                        stream.Seek(- Table.StringSize, SeekOrigin.Current);
+                                        //１つのStringにデコードできない文字が複数ある場合要修正
+                                        str = Encoding.UTF8.GetString(reader.ReadBytes(Table.StringSize)).Replace("\uFFFD", latin1str);                                       
+                                    }
+
                                     Tablestring.Add(
                                         new csv()
                                         {
                                             id = i,
                                             soundref = Table.SoundResRef,
-                                            entry = Encoding.UTF8.GetString(reader.ReadBytes(Table.StringSize))
+                                            entry = str
                                         }
                                     );
                                 }
@@ -152,7 +168,8 @@ namespace Kotlk2csv
                                 {
                                     TLK.Add(BitConverter.GetBytes(0));
                                 }
-                            }else
+                            }
+                            else
                             {
                                 for (int i = 0; i < 6; i++)
                                 {
@@ -163,7 +180,17 @@ namespace Kotlk2csv
                             TLK.Add(BitConverter.GetBytes(Table.StringSize));
                             TLK.Add(BitConverter.GetBytes(0));
                             Table.OffsetToString += Table.StringSize;
-                            TLKString.Add(Encoding.UTF8.GetBytes(record.entry));
+                            try
+                            {
+                                if (args[1] == "-rep" | args[2] == "-rep")
+                                {
+                                    TLKString.Add(Encoding.UTF8.GetBytes(record.entry.Replace(" ", "`")));
+                                }
+                            }
+                            catch (IndexOutOfRangeException)
+                            {
+                                TLKString.Add(Encoding.UTF8.GetBytes(record.entry));
+                            }
                             Count++;
                             StringCount = record.id;
                         }
@@ -176,14 +203,22 @@ namespace Kotlk2csv
                         TLKHeader.AddRange(TLKString);
                         try
                         {
-                            if (args[1] != null) //第二引数を出力ファイル名に
+                            if (args[1] == "-rep")
+                            {
+                                FileStream fs = new FileStream("exported.tlk", FileMode.OpenOrCreate, FileAccess.Write);
+                                var flattenedList = TLKHeader.SelectMany(bytes => bytes);
+                                var byteArray = flattenedList.ToArray();
+                                fs.Write(byteArray, 0, byteArray.Length);
+                                fs.Close();
+                            }
+                            else if (args[1] != null) //第二引数を出力ファイル名に
                             {
                                 FileStream fs = new FileStream(args[1], FileMode.OpenOrCreate, FileAccess.Write);
                                 var flattenedList = TLKHeader.SelectMany(bytes => bytes);
                                 var byteArray = flattenedList.ToArray();
                                 fs.Write(byteArray, 0, byteArray.Length);
                                 fs.Close();
-                            }
+                            }                            
                         }
                         catch (IndexOutOfRangeException)
                         {
